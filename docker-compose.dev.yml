@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: assessy-postgres
+    environment:
+      POSTGRES_USER: assessy
+      POSTGRES_PASSWORD: assessy
+      POSTGRES_DB: assessy
+    # 5433 on the host: the Hive prototype's dev Postgres owns 5432, and both
+    # apps run side by side on this machine.
+    ports:
+      - "5433:5432"
+    volumes:
+      - assessy-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assessy -d assessy"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  assessy-pgdata:

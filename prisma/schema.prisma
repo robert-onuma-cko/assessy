@@ -1,0 +1,276 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Request lifecycle ────────────────────────────────────────────────────────
+//
+// The state machine from the design doc (§6.2). The first five states are the
+// live pipeline; the last eight are the terminal triage outcomes — exactly one
+// per request, and a request can NEVER enter a delivery state. "Routing ≠
+// acceptance of delivery" is enforced here, not by convention.
+// RETURNED_FOR_INFO is terminal but reopenable (same id, back to CLARIFYING).
+
+enum RequestState {
+  SUBMITTED
+  CLARIFYING
+  READY_FOR_REVIEW
+  REQUESTER_CONFIRMED
+  AWAITING_DOMAIN_DECISION
+  // Terminal outcomes (design §6.2 / D2 triage outcomes)
+  RESOLVED_SELF_SERVICE
+  LINKED_TO_INITIATIVE
+  RETURNED_FOR_INFO
+  REJECTED_REDIRECTED
+  ACCEPTED_TO_BACKLOG
+  ADVANCED_TO_MCAP
+  ROUTED_TO_INCIDENT
+  BACKLOG_CANDIDATE
+}
+
+// The 8-type CKO request taxonomy (Request Methodology D1). Labels and
+// definitions live in lib/taxonomy.ts; classifications are stamped with the
+// taxonomy version they used.
+enum RequestType {
+  BAU
+  SMALL_TASK
+  SERVICE_REQUEST
+  INCIDENT_BUG
+  IMPROVEMENT_IDEA
+  INITIATIVE_DEPENDENCY
+  PROJECT_REQUEST
+  INITIATIVE_MAJOR_CHANGE
+}
+
+// Split authority (design §6.1): Scout may propose only INFORM/CONSULT/ASSESS.
+// DELIVER is set by the domain when it accepts work. APPROVE is never set in
+// this product — approval is MCAP's job, already live in Hive.
+enum EngagementLevel {
+  INFORM
+  CONSULT
+  ASSESS
+  CONTRIBUTE
+  DELIVER
+  APPROVE
+}
+
+enum EngagementStatus {
+  PROPOSED
+  CONFIRMED
+  DECLINED
+}
+
+// Categorical only — numeric thresholds are a pilot output, not an input.
+enum Confidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum MessageRole {
+  REQUESTER
+  SCOUT
+  TRIAGE
+}
+
+model Request {
+  id       String   @id @default(cuid())
+  // Resubmission / split lineage — a returned request that comes back keeps
+  // its history via the parent link; prior Q&A is never re-asked.
+  parentId String?
+  parent   Request?  @relation("RequestLineage", fields: [parentId], references: [id])
+  children Request[] @relation("RequestLineage")
+
+  source      String   @default("app") // app | form | manual
+  submittedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  requesterEmail String
+  ownerEmail     String // request owner; defaults to requester
+
+  // Immutable verbatim submission. Written once at capture (stage 0, before
+  // any AI runs) and never updated — enforced in lib/services/request-service.
+  originalSubmission String
+
+  // Extraction output: each fact tagged known | inferred | missing | unresolved.
+  structuredFacts Json?
+
+  // Requester suggestions are recorded and immutable — they are input signal,
+  // never the decision (classification is team-led, per the XFN agreement).
+  suggestedType      RequestType?
+  suggestedDomainKey String?
+
+  // Human-written only. Scout's recommendations live in TriageRecommendation;
+  // divergence between the two is the pilot's core quality metric.
+  validatedFinalType RequestType?
+
+  state RequestState @default(SUBMITTED)
+
+  // Decision record — set once, when a human picks the terminal outcome.
+  decisionReason String?
+  decidedByEmail String?
+  decidedAt      DateTime?
+  routingUrl     String? // where the work went: Jira issue, Hive initiative, service queue, KB link
+  // Capacity outcome at backlog acceptance (D2's five), recorded as data only:
+  // within-capacity | resequence | defer | escalate | reject — plus the named
+  // displaced initiative when resequencing.
+  capacityOutcome    String?
+  displacedInitiative String?
+
+  receivingDomainKey String?
+  receivingDomain    DomainCatalogue? @relation(fields: [receivingDomainKey], references: [key])
+
+  activeDisruption        Boolean @default(false)
+  // Sticky and requester-proof: set by Scout or any human, cleared only by the
+  // receiving Domain Approval Owner or S&O with a mandatory reason (audited).
+  initiativeIndicatorFlag Boolean @default(false)
+  linkedInitiativeRef     String?
+
+  messages        RequestMessage[]
+  recommendations TriageRecommendation[]
+  engagements     RequestDomainEngagement[]
+
+  @@index([state])
+  @@index([receivingDomainKey])
+  @@index([requesterEmail])
+}
+
+model RequestMessage {
+  id        String      @id @default(cuid())
+  requestId String
+  request   Request     @relation(fields: [requestId], references: [id])
+  role      MessageRole
+  content   String
+  // For SCOUT messages: which pipeline stage produced it, cited KB slugs (IDs
+  // only — never retrieved content, per design §8 privacy), question metadata.
+  meta      Json?
+  createdAt DateTime    @default(now())
+
+  @@index([requestId, createdAt])
+}
+
+// Immutable, versioned per Scout pass — never updated, a new row per re-run.
+model TriageRecommendation {
+  id                 String       @id @default(cuid())
+  requestId          String
+  request            Request      @relation(fields: [requestId], references: [id])
+  version            Int
+  recommendedType    RequestType
+  receivingDomainKey String?
+  // [{ domainKey, level, rationale }] — Scout proposes INFORM/CONSULT/ASSESS only.
+  engagements        Json?
+  confidence         Confidence
+  rationale          String
+  // Cited KB slugs / initiative refs with retrieval timestamps.
+  sources            Json?
+  // Per-indicator boolean + evidence (incl. MCAP v1 live-event types).
+  indicatorChecklist Json?
+  taxonomyVersion    String
+  createdAt          DateTime     @default(now())
+
+  @@unique([requestId, version])
+}
+
+model RequestDomainEngagement {
+  id        String           @id @default(cuid())
+  requestId String
+  request   Request          @relation(fields: [requestId], references: [id])
+  domainKey String
+  domain    DomainCatalogue  @relation(fields: [domainKey], references: [key])
+  level     EngagementLevel
+  setBy     String // "scout" | actor email
+  status    EngagementStatus @default(PROPOSED)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([requestId, domainKey])
+}
+
+// ─── Reference data ───────────────────────────────────────────────────────────
+
+// Dated READ-ONLY mirror of the authoritative Domain Approval Owner register
+// (MCAP v1; the live record is in Hive). Never hand-edit rows here beyond the
+// import — a second hand-maintained catalogue is the drift risk the design
+// warns about. `source` + `effectiveDate` say which export a row came from.
+model DomainCatalogue {
+  key                String   @id
+  name               String
+  description        String   @default("")
+  department         String
+  pillar             String?
+  approvalOwnerEmail String?
+  delegateEmail      String?
+  effectiveDate      DateTime
+  source             String
+
+  requests    Request[]
+  engagements RequestDomainEngagement[]
+}
+
+// The retrieval corpus. Every entry carries provenance (owner + effective
+// date); Scout must cite entry slugs, and uncited assertions render as
+// "inferred — no source".
+model KbEntry {
+  id            String   @id @default(cuid())
+  slug          String   @unique // cited id, e.g. KB-DOM-014
+  kind          String // service | selfservice | example | guidance
+  domainKey     String?
+  title         String
+  body          String
+  ownerEmail    String
+  effectiveDate DateTime
+  version       Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Dated import of Hive initiatives (+ pilot-domain Jira epics) for
+// existing-initiative matching. Suggest, never auto-link.
+model InitiativeSnapshot {
+  id         String   @id @default(cuid())
+  ref        String   @unique // e.g. Hive initiative id / Jira epic key
+  title      String
+  summary    String   @default("")
+  ownerEmail String?
+  sourceUrl  String?
+  importedAt DateTime @default(now())
+}
+
+// ─── Audit & notifications ────────────────────────────────────────────────────
+
+// Append-only. Every write in lib/services/* adds a row. Corrections to
+// Scout-populated fields carry one of the six reason codes:
+// wrong-domain | wrong-type | kb-gap-or-stale | taxonomy-ambiguity |
+// requester-info-wrong | scope-changed.
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String // request | engagement | recommendation | kb-entry | domain-import | snapshot-import
+  entityId   String
+  requestId  String?
+  action     String // create | state-change | correction | decision | flag-set | flag-cleared | reopen | import
+  actor      String // email, or "scout"
+  reasonCode String?
+  field      String?
+  fromValue  String?
+  toValue    String?
+  createdAt  DateTime @default(now())
+
+  @@index([requestId, createdAt])
+}
+
+model Notification {
+  id             String    @id @default(cuid())
+  recipientEmail String
+  type           String // triage-ready | domain-confirmation-requested | decision-recorded | nudge
+  message        String
+  href           String?
+  requestId      String?
+  createdAt      DateTime  @default(now())
+  readAt         DateTime?
+
+  @@index([recipientEmail, createdAt])
+}
