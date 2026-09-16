@@ -4,14 +4,16 @@ import { ValidatedForm, Field } from '@/components/FormField';
 import { requiredMessage, type FieldErrors } from '@/lib/form-validation';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { SubmitButton } from '@/components/ui/submit-button';
 import { submitRequest } from '@/lib/actions';
+import { DatePicker } from '@/components/DatePicker';
+import { EvidenceLinksInput } from '@/components/EvidenceLinksInput';
+import { DOC_LINK_HELP } from '@/lib/doc-links';
+import { useState } from 'react';
+import { format } from 'date-fns';
 
-// Q3 of the design: the whole mandatory surface is one free-text need plus the
-// production-issue toggle. Everything else is optional here and becomes Scout's
-// clarification territory — the D1 minimum-info set is an extraction target,
+// Q3 of the design: the whole mandatory surface is one free-text need.
+// Everything else is optional here and becomes Scout's clarification territory — the D1 minimum-info set is an extraction target,
 // not form friction.
 
 function validate(data?: FormData): FieldErrors {
@@ -21,6 +23,9 @@ function validate(data?: FormData): FieldErrors {
 }
 
 export function NewRequestForm() {
+  const [neededBy, setNeededBy] = useState<string | null>(null);
+  const today = format(new Date(), 'yyyy-MM-dd');
+
   return (
     <ValidatedForm action={submitRequest} validate={validate} className="space-y-5">
       <Field
@@ -37,31 +42,40 @@ export function NewRequestForm() {
         />
       </Field>
 
-      <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
-        <Switch id="activeDisruption" name="activeDisruption" aria-label="Something is broken in production right now" />
-        <Label htmlFor="activeDisruption" className="text-sm font-normal">
-          Something is broken in production right now
-        </Label>
-      </div>
-
       <Field
         name="evidenceLinks"
         label="Evidence links"
         htmlFor="evidenceLinks"
         optional
-        hint="Docs, tickets, recordings — anything Scout should read before asking you questions."
+        hint={DOC_LINK_HELP}
       >
-        <Input id="evidenceLinks" name="evidenceLinks" placeholder="https://…" />
+        <EvidenceLinksInput id="evidenceLinks" name="evidenceLinks" />
       </Field>
 
       <Field
-        name="timing"
+        name="neededBy"
         label="When do you need it?"
-        htmlFor="timing"
+        htmlFor="neededBy"
         optional
-        hint="If a date is fixed, say what drives it — customer, regulator, scheme, contract."
+        hint="If a date is fixed, say what drives it — customer, regulator, scheme, contract. An aspirational date is fine too; Scout treats the two differently."
       >
-        <Input id="timing" name="timing" placeholder="e.g. before Q4 close — regulatory deadline" />
+        <div className="flex flex-wrap items-center gap-2">
+          <DatePicker
+            id="neededBy"
+            value={neededBy}
+            onChange={setNeededBy}
+            min={today}
+            aria-label="Needed by"
+          />
+          <input type="hidden" name="neededBy" value={neededBy ?? ''} />
+          <Input
+            id="dateDriver"
+            name="dateDriver"
+            aria-label="What drives the date"
+            placeholder="What drives the date? e.g. regulatory deadline"
+            className="min-w-0 flex-1"
+          />
+        </div>
       </Field>
 
       {/* Footer per design.md §7: explanation left, actions right, primary rightmost. */}

@@ -133,6 +133,7 @@ model Request {
   messages        RequestMessage[]
   recommendations TriageRecommendation[]
   engagements     RequestDomainEngagement[]
+  evidenceLinks   EvidenceLink[]
 
   @@index([state])
   @@index([receivingDomainKey])
@@ -151,6 +152,27 @@ model RequestMessage {
   createdAt DateTime    @default(now())
 
   @@index([requestId, createdAt])
+}
+
+// Evidence the requester attached at submission. Mirrors Hive's external-doc
+// pattern: `provider` is the extractor id (gdoc | confluence | link) and
+// `extractedText` is the cached plain text Scout reads — null whenever we hold
+// the link but could not read it (`failureReason` says why). The URL itself is
+// never refused for being unreadable; a link is evidence even when its text
+// isn't. Retrieved text is evidence, never instructions (design §4.4).
+model EvidenceLink {
+  id            String    @id @default(cuid())
+  requestId     String
+  request       Request   @relation(fields: [requestId], references: [id])
+  url           String
+  provider      String
+  extractedText String?
+  extractedAt   DateTime?
+  failureReason String? // unsupported | unreadable | unavailable
+  failureDetail String?
+  createdAt     DateTime  @default(now())
+
+  @@unique([requestId, url])
 }
 
 // Immutable, versioned per Scout pass — never updated, a new row per re-run.

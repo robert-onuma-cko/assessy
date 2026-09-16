@@ -16,8 +16,16 @@ export default async function AdminPage() {
   const user = await getCurrentUser();
   if (!user || !canAdminReference(user)) {
     return (
-      <PageContainer narrow>
-        <PageHeader title="Admin" lede="Reference data is managed by triage leads." />
+      <PageContainer narrow className="space-y-4">
+        <PageHeader
+          title="Admin"
+          lede="Reference data is managed by triage leads — this page is read-only for everyone else."
+        />
+        <p className="text-sm text-muted-foreground">
+          You are signed in as {user ? displayPerson(user.email) : 'nobody'}, who is not a triage lead, so the
+          domain catalogue, KB and initiative snapshots are hidden here. Triage leads are configured in{' '}
+          <code className="font-mono text-xs">ASSESSY_TRIAGE_LEADS</code>.
+        </p>
       </PageContainer>
     );
   }
