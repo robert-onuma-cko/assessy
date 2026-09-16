@@ -68,3 +68,19 @@ export async function canConfirmDomain(user: CurrentUser, domainKey: string): Pr
 export function canAdminReference(user: CurrentUser): boolean {
   return user.isTriageLead;
 }
+
+/**
+ * Who may decide on a request in its current state (design §8). Triage leads
+ * always; the receiving domain's approval owner or delegate only while it is
+ * awaiting their decision. Returns the role the decision is recorded under.
+ */
+export async function decisionRoleFor(
+  user: CurrentUser,
+  request: { state: string; receivingDomainKey: string | null },
+): Promise<'triage' | 'domain' | null> {
+  if (user.isTriageLead) return 'triage';
+  if (request.state === 'AWAITING_DOMAIN_DECISION' && request.receivingDomainKey) {
+    if (await canConfirmDomain(user, request.receivingDomainKey)) return 'domain';
+  }
+  return null;
+}

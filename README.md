@@ -26,9 +26,9 @@ npm test         # Vitest
 
 ## Build status (per the design's phased roadmap)
 
-- **Week 1 (this scaffold):** app shell per design.md, Prisma schema (§6 data model), seeded domain-catalogue mirror, capture stage 0 (submission → immutable record → Scout acknowledgement), queues rendering.
-- Week 2: submission flow depth, record page states, triage queue actions.
-- Week 3: `lib/ai.ts` (provider-swappable + mock), extraction + classification, eval harness.
-- Week 4: retrieval, domain recommendation, matching, streaming brief.
-- Week 5: readiness gate, clarification loop, incident short-circuit, Scout conversational UI.
-- Week 6: domain confirmation workflow, corrections, notifications, scenario suite.
+- **Phase 1 (done):** app shell per design.md, Prisma schema (§6 data model), domain catalogue + initiative list imported from a dated Hive snapshot (`prisma/data`), capture stage 0 (submission → immutable record → Scout acknowledgement), queues rendering.
+- **Phase 2 (done):** submission flow depth (date picker, multiple evidence links with Hive's document extractors), the record as a chat thread, Scout-guided manual triage and domain decisions (classify, route, flag, ask, send to domain, re-route, record outcome) with audit + reason codes, triage queue with recent decisions.
+- Phase 3: `lib/ai.ts` (provider-swappable + mock), extraction + classification, eval harness.
+- Phase 4: retrieval, domain recommendation, matching, streaming brief.
+- Phase 5: readiness gate, clarification loop, Scout conversational UI.
+- Phase 6: notifications UI + nudges, corrections review, scenario suite.

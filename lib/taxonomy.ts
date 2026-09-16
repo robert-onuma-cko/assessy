@@ -76,3 +76,36 @@ export const TERMINAL_STATES: readonly RequestState[] = [
 export function isTerminal(state: RequestState): boolean {
   return (TERMINAL_STATES as readonly string[]).includes(state);
 }
+
+// Correction reason codes (design §8): every human change to a Scout-populated
+// field carries exactly one. Six, deliberately — few enough to aggregate weekly.
+export const CORRECTION_REASON_CODES = {
+  'wrong-domain': 'Wrong domain',
+  'wrong-type': 'Wrong type',
+  'kb-gap-or-stale': 'KB gap or stale entry',
+  'taxonomy-ambiguity': 'Taxonomy ambiguity',
+  'requester-info-wrong': 'Requester information was wrong',
+  'scope-changed': 'Scope changed',
+} as const;
+export type CorrectionReasonCode = keyof typeof CORRECTION_REASON_CODES;
+
+// D2's five capacity outcomes, recorded as data at backlog acceptance (design
+// §3.4). Assessy records the decision; it never computes displacement.
+export const CAPACITY_OUTCOMES = {
+  'within-capacity': 'Deliver within current capacity',
+  resequence: 'Re-sequence — names the displaced initiative',
+  defer: 'Defer',
+  escalate: 'Escalate',
+  reject: 'Reject',
+} as const;
+export type CapacityOutcome = keyof typeof CAPACITY_OUTCOMES;
+
+// Engagement levels Scout may propose vs the ones only a domain sets (design
+// §6.1 split authority). APPROVE is never set in this product.
+export const ENGAGEMENT_LEVELS: Record<string, string> = {
+  INFORM: 'Inform',
+  CONSULT: 'Consult',
+  ASSESS: 'Assess',
+  CONTRIBUTE: 'Contribute',
+  DELIVER: 'Deliver',
+};
